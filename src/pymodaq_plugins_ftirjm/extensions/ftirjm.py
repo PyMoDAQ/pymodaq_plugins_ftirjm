@@ -8,8 +8,12 @@ from pymodaq.utils.plotting.data_viewers.viewer1D import Viewer1D
 from pymodaq.utils.plotting.data_viewers.viewer2D import Viewer2D
 from pymodaq.utils.data import DataToExport, DataWithAxes
 from pymodaq.utils.gui_utils.widgets import PushButtonIcon, LabelWithFont, SpinBox
+from pymodaq.utils.config import Config
+from pymodaq_plugins_ftirjm.utils import Config as ConfigPlugin
 
-config = utils.load_config()
+config = Config()
+config_plugin = ConfigPlugin()
+
 logger = utils.set_logger(utils.get_module_name(__file__))
 
 EXTENSION_NAME = 'FTIR_JM'
@@ -31,13 +35,14 @@ class FTIRJM(gutils.CustomApp):
         self.add_action('grab', 'Grab', 'camera', "Grab from camera", checkable=True, toolbar=self.toolbar)
         self.add_action('snap', 'Snap', 'snap', "Load target file (.h5, .png, .jpg) or data from camera",
                         checkable=False, toolbar=self.toolbar)
-        self.add_action('show', 'Show/hide', 'read2', "Show Hide Dashboard", checkable=True, toolbar=self.toolbar,
-                        checked=True)
+        self.add_action('show', 'Show/hide', 'read2', "Show Hide Dashboard", checkable=True, toolbar=self.toolbar)
         self.add_widget('move1', SpinBox)
         self.get_action('move1').setStyleSheet("background-color : lightgreen; color: black")
+        self.get_action('move1').setValue(config_plugin('position_1'))
         self.add_action('move_abs_1', 'Move Abs', 'go_to_1', "Move to the set absolute value")
 
         self.add_widget('move2', SpinBox)
+        self.get_action('move2').setValue(config_plugin('position_2'))
         self.get_action('move2').setStyleSheet("background-color : lightcoral; color: black")
         self.add_action('move_abs_2', 'Move Abs', 'go_to_2', "Move to the other set absolute value")
 
@@ -47,11 +52,17 @@ class FTIRJM(gutils.CustomApp):
         self.modules_manager.get_mod_from_name('Camera').grab_done_signal.connect(self.show_data)
         self.connect_action('show', lambda x: self.dashboard.mainwindow.setVisible(x))
 
+        self.connect_action('move_abs_1', lambda: self.move_at(self.get_action('move1')))
+        self.connect_action('move_abs_2', lambda: self.move_at(self.get_action('move2')))
+
         self.connect_action('quit', self.quit)
+
+    def move_at(self, sb: SpinBox):
+        self.modules_manager.get_mod_from_name('Elliptec', mod='act').move_abs(sb.value())
 
     def quit(self):
         self.dashboard.quit_fun()
-        self.parent.close()
+        self.parent.parent().close()
 
     def setup_docks(self):
         """
