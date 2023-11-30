@@ -7,6 +7,7 @@ from qtpy import QtWidgets, QtCore
 from pymodaq.utils.plotting.data_viewers.viewer1D import Viewer1D
 from pymodaq.utils.plotting.data_viewers.viewer2D import Viewer2D
 from pymodaq.utils.data import DataToExport, DataWithAxes
+from pymodaq.utils.gui_utils.widgets import PushButtonIcon, LabelWithFont, SpinBox
 
 config = utils.load_config()
 logger = utils.set_logger(utils.get_module_name(__file__))
@@ -21,10 +22,36 @@ class FTIRJM(gutils.CustomApp):
 
     def __init__(self, dockarea, dashboard):
         super().__init__(dockarea, dashboard)
+        self.viewer2D: Viewer2D = None
+
         self.setup_ui()
 
+    def setup_actions(self):
+        self.add_action('quit', 'Quit', 'close2', "Quit program", toolbar=self.toolbar)
+        self.add_action('grab', 'Grab', 'camera', "Grab from camera", checkable=True, toolbar=self.toolbar)
+        self.add_action('snap', 'Snap', 'snap', "Load target file (.h5, .png, .jpg) or data from camera",
+                        checkable=False, toolbar=self.toolbar)
+        self.add_action('show', 'Show/hide', 'read2', "Show Hide Dashboard", checkable=True, toolbar=self.toolbar,
+                        checked=True)
+        self.add_widget('move1', SpinBox)
+        self.get_action('move1').setStyleSheet("background-color : lightgreen; color: black")
+        self.add_action('move_abs_1', 'Move Abs', 'go_to_1', "Move to the set absolute value")
+
+        self.add_widget('move2', SpinBox)
+        self.get_action('move2').setStyleSheet("background-color : lightcoral; color: black")
+        self.add_action('move_abs_2', 'Move Abs', 'go_to_2', "Move to the other set absolute value")
+
     def connect_things(self):
-        pass
+        self.connect_action('grab', self.modules_manager.get_mod_from_name('Camera').grab)
+        self.connect_action('snap', self.modules_manager.get_mod_from_name('Camera').snap)
+        self.modules_manager.get_mod_from_name('Camera').grab_done_signal.connect(self.show_data)
+        self.connect_action('show', lambda x: self.dashboard.mainwindow.setVisible(x))
+
+        self.connect_action('quit', self.quit)
+
+    def quit(self):
+        self.dashboard.quit_fun()
+        self.parent.close()
 
     def setup_docks(self):
         """
@@ -100,12 +127,6 @@ class FTIRJM(gutils.CustomApp):
         '''
         raise NotImplementedError
 
-    def setup_actions(self):
-        self.add_action('quit', 'Quit', 'close2', "Quit program", toolbar=self.toolbar)
-        self.add_action('grab', 'Grab', 'camera', "Grab from camera", checkable=True, toolbar=self.toolbar)
-        self.add_action('load', 'Snap', 'snap', "Load target file (.h5, .png, .jpg) or data from camera",
-                        checkable=False, toolbar=self.toolbar)
-        self.add_action('show', 'Show/hide', 'read2', "Show Hide Dashboard", checkable=True, toolbar=self.toolbar)
 
     def show_data(self, dte: DataToExport):
 
@@ -123,8 +144,9 @@ def main():
         import qdarkstyle
         app.setStyleSheet(qdarkstyle.load_stylesheet())
 
-    from pymodaq.dashboard import DashBoard
+    from pymodaq.dashboard import DashBoard, extensions
 
+    ext = utils.find_dict_in_list_from_key_val(extensions, 'name', EXTENSION_NAME)
     win = QtWidgets.QMainWindow()
     area = gutils.dock.DockArea()
     win.setCentralWidget(area)
@@ -133,9 +155,11 @@ def main():
 
     dashboard = DashBoard(area)
 
+
     file = Path("../resources/FTIR_JM.xml")
     if file.exists():
         dashboard.set_preset_mode(file)
+        prog = dashboard.load_extensions_module(ext)
     else:
         msgBox = QtWidgets.QMessageBox()
         msgBox.setText(f"The default file specified in the configuration file does not exists!\n"
@@ -144,10 +168,7 @@ def main():
         msgBox.setStandardButtons(msgBox.Ok)
         ret = msgBox.exec()
 
-    prog = FTIRJM(area, dashboard)
-
-    win.show()
-    dashboard.
+    win.hide()
     sys.exit(app.exec_())
 
 
