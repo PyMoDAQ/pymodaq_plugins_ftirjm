@@ -1,23 +1,23 @@
 ## To modify by developper(s) of the plugin
 
 [plugin-info]
-SHORT_PLUGIN_NAME = 'template'  #to be modified, for instance daqmx then rename the module name:
-# (pymodaq_plugins_template become pymodaq_plugins_daqmx for instance)
+SHORT_PLUGIN_NAME = 'ftirjm'  #to be modified, for instance daqmx then rename the module name:
+# (pymodaq_plugins_ftirjm become pymodaq_plugins_daqmx for instance)
 
-package-url = 'https://github.com/PyMoDAQ/pymodaq_plugins_template' #to modify
-description = 'some word about your plugin'
+package-url = 'https://github.com/PyMoDAQ/pymodaq_plugins_ftirjm' #to modify
+description = 'Specific pymodaq plugin for JM Poumirol FTRI at CEMES lab'
 
-author = 'Author Name'
-author-email = 'Author email'
+author = 'Sebastien Weber'
+author-email = 'sebastien.weber@cnrs.fr'
 license = 'MIT'
 
 [plugin-install]
 #packages required for your plugin:
-packages-required = ['pymodaq>=4.0.0']
+packages-required = ['pymodaq>=4.0.0', 'pymodaq_plugins_raspberry', 'pymodaq_plugins_thorlabs']
 
 [features]  # defines the plugin features contained into this plugin
 instruments = true  # true if plugin contains instrument classes (else false, notice the lowercase for toml files)
-extensions = false  # true if plugins contains dashboard extensions
+extensions = true  # true if plugins contains dashboard extensions
 pid_models = false  # true if plugins contains pid models
 h5exporters = false  # true if plugin contains custom h5 file exporters
 scanners = false  # true if plugin contains custom scan layout (daq_scan extensions)

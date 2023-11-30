@@ -6,37 +6,18 @@ from qtpy import QtWidgets, QtCore
 
 from pymodaq.utils.plotting.data_viewers.viewer1D import Viewer1D
 from pymodaq.utils.plotting.data_viewers.viewer2D import Viewer2D
-
+from pymodaq.utils.data import DataToExport, DataWithAxes
 
 config = utils.load_config()
 logger = utils.set_logger(utils.get_module_name(__file__))
 
-EXTENSION_NAME = 'MY_EXTENSION_NAME'
-CLASS_NAME = 'MyExtension'
+EXTENSION_NAME = 'FTIR_JM'
+CLASS_NAME = 'FTIRJM'
 
 
-class MyExtension(gutils.CustomApp):
+class FTIRJM(gutils.CustomApp):
     # list of dicts enabling the settings tree on the user interface
-    params = [
-        {'title': 'Main settings:', 'name': 'main_settings', 'type': 'group', 'children': [
-            {'title': 'Save base path:', 'name': 'base_path', 'type': 'browsepath',
-             'value': config['data_saving']['h5file']['save_path']},
-            {'title': 'File name:', 'name': 'target_filename', 'type': 'str', 'value': "", 'readonly': True},
-            {'title': 'Date:', 'name': 'date', 'type': 'date', 'value': QtCore.QDate.currentDate()},
-            {'title': 'Do something, such as showing data:', 'name': 'do_something', 'type': 'bool', 'value': False},
-            {'title': 'Something done:', 'name': 'something_done', 'type': 'led', 'value': False, 'readonly': True},
-            {'title': 'Infos:', 'name': 'info', 'type': 'text', 'value': ""},
-            {'title': 'push:', 'name': 'push', 'type': 'bool_push', 'value': False}
-        ]},
-        {'title': 'Other settings:', 'name': 'other_settings', 'type': 'group', 'children': [
-            {'title': 'List of stuffs:', 'name': 'list_stuff', 'type': 'list', 'value': 'first',
-             'limits': ['first', 'second', 'third'], 'tip': 'choose a stuff from the list'},
-            {'title': 'List of integers:', 'name': 'list_int', 'type': 'list', 'value': 0,
-             'limits': [0, 256, 512], 'tip': 'choose a stuff from this int list'},
-            {'title': 'one integer:', 'name': 'an_integer', 'type': 'int', 'value': 500, },
-            {'title': 'one float:', 'name': 'a_float', 'type': 'float', 'value': 2.7, },
-        ]},
-    ]
+    params = []
 
     def __init__(self, dockarea, dashboard):
         super().__init__(dockarea, dashboard)
@@ -59,23 +40,8 @@ class MyExtension(gutils.CustomApp):
         ########
         pyqtgraph.dockarea.Dock
         """
-        self.docks['settings'] = gutils.Dock('Settings')
-        self.dockarea.addDock(self.docks['settings'])
-        self.docks['settings'].addWidget(self.settings_tree)
-
-        self.docks['modmanager'] = gutils.Dock('Module Manager')
-        self.dockarea.addDock(self.docks['modmanager'], 'right', self.docks['settings'])
-        self.docks['modmanager'].addWidget(self.modules_manager.settings_tree)
-
-        self.docks['viewer1D'] = gutils.Dock('Viewers')
-        self.dockarea.addDock(self.docks['viewer1D'], 'right', self.docks['modmanager'])
-
         self.docks['viewer2D'] = gutils.Dock('Viewers')
-        self.dockarea.addDock(self.docks['viewer2D'], 'bottom', self.docks['viewer1D'])
-
-        widg = QtWidgets.QWidget()
-        self.viewer1D = Viewer1D(widg)
-        self.docks['viewer1D'].addWidget(widg)
+        self.dockarea.addDock(self.docks['viewer2D'])
 
         widg1 = QtWidgets.QWidget()
         self.viewer2D = Viewer2D(widg1)
@@ -135,27 +101,17 @@ class MyExtension(gutils.CustomApp):
         raise NotImplementedError
 
     def setup_actions(self):
-        pass
+        self.add_action('quit', 'Quit', 'close2', "Quit program", toolbar=self.toolbar)
+        self.add_action('grab', 'Grab', 'camera', "Grab from camera", checkable=True, toolbar=self.toolbar)
+        self.add_action('load', 'Snap', 'snap', "Load target file (.h5, .png, .jpg) or data from camera",
+                        checkable=False, toolbar=self.toolbar)
+        self.add_action('show', 'Show/hide', 'read2', "Show Hide Dashboard", checkable=True, toolbar=self.toolbar)
 
-    def show_data(self, data_all):
-        data1D = []
-        data2D = []
-        labels1D = []
-        labels2D = []
-        dims = ['data1D', 'data2D']
-        for det in data_all:
-            for dim in dims:
-                if len(data_all[det][dim]) != 0:
-                    for channel in data_all[det][dim]:
-                        if dim == 'data1D':
-                            labels1D.append(channel)
-                            data1D.append(data_all[det][dim][channel]['data'])
-                        else:
-                            labels2D.append(channel)
-                            data2D.append(data_all[det][dim][channel]['data'])
-        self.viewer1D.show_data(data1D)
-        self.viewer2D.setImage(*data2D[:min(3, len(data2D))])
+    def show_data(self, dte: DataToExport):
 
+        dwa = dte.get_data_from_dim('Data2D')[0]
+
+        self.viewer2D.show_data(dwa)
 
 
 def main():
@@ -163,16 +119,21 @@ def main():
     from pymodaq.dashboard import DashBoard
     from pathlib import Path
     app = QtWidgets.QApplication(sys.argv)
-    mainwindow = QtWidgets.QMainWindow()
-    dockarea = gutils.DockArea()
-    mainwindow.setCentralWidget(dockarea)
+    if config['style']['darkstyle']:
+        import qdarkstyle
+        app.setStyleSheet(qdarkstyle.load_stylesheet())
 
-    #  init the dashboard
-    mainwindow_dash = QtWidgets.QMainWindow()
-    area_dash = gutils.DockArea()
-    mainwindow_dash.setCentralWidget(area_dash)
-    dashboard = DashBoard(area_dash)
-    file = Path(utils.get_set_preset_path()).joinpath(f"{config['presets']['default_preset_for_scan']}.xml")
+    from pymodaq.dashboard import DashBoard
+
+    win = QtWidgets.QMainWindow()
+    area = gutils.dock.DockArea()
+    win.setCentralWidget(area)
+    win.resize(1000, 500)
+    win.setWindowTitle('PyMoDAQ Dashboard')
+
+    dashboard = DashBoard(area)
+
+    file = Path("../resources/FTIR_JM.xml")
     if file.exists():
         dashboard.set_preset_mode(file)
     else:
@@ -183,9 +144,10 @@ def main():
         msgBox.setStandardButtons(msgBox.Ok)
         ret = msgBox.exec()
 
-    prog = MyExtension(dockarea, dashboard)
+    prog = FTIRJM(area, dashboard)
 
-    mainwindow.show()
+    win.show()
+    dashboard.
     sys.exit(app.exec_())
 
 
