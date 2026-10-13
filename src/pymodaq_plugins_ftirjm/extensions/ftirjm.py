@@ -27,18 +27,15 @@ from pymodaq.utils.config import get_set_experiment_path
 from pymodaq.utils.custom_ext import CustomExt
 from pymodaq.utils.managers.modules.utils import ModuleType
 
-from pymodaq_plugins_ftirjm.utils import Config as ConfigPlugin
-
 logger = set_logger(get_module_name(__file__))
 
+# the Config of utils.py is registered by PyMoDAQ under 'ftirjm' when it discovers the installed plugins
 config = GlobalConfig()
-if 'ftirjm' not in config:
-    # PyMoDAQ registers the Config of the packages having instrument plugins only (get_instrument_plugins)
-    GlobalConfig.register()(ConfigPlugin)
 
 
 def config_plugin(*args):
     return config('ftirjm', *args)
+
 
 EXTENSION_NAME = 'FTIR_JM'
 CLASS_NAME = 'FTIRJM'
