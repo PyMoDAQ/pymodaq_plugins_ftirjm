@@ -1,189 +1,185 @@
-from pymodaq.utils import gui_utils as gutils
-from pymodaq.utils import daq_utils as utils
-from pyqtgraph.parametertree import Parameter, ParameterTree
-from pymodaq.utils.parameter import pymodaq_ptypes
-from qtpy import QtWidgets, QtCore
+# -*- coding: utf-8 -*-
+"""Dashboard extension of JM Poumirol's FTIR at CEMES
 
-from pymodaq.utils.plotting.data_viewers.viewer1D import Viewer1D
-from pymodaq.utils.plotting.data_viewers.viewer2D import Viewer2D
-from pymodaq.utils.data import DataToExport, DataWithAxes
-from pymodaq.utils.gui_utils.widgets import PushButtonIcon, LabelWithFont, SpinBox
-from pymodaq.utils.config import Config
+It shows the images of a camera and moves an Elliptec rotator between two configurable positions. The
+instruments come from the Dashboard's experiment: an actuator named ``actuator_name`` and a 2D detector named
+``camera_name`` (both in the configuration file of this plugin). Two experiments are shipped in ``resources``:
+
+* ``FTIR_JM``: the Elliptec rotator of ``pymodaq_plugins_thorlabs`` and the PiCamera of ``pymodaq_plugins_raspberry``
+* ``FTIR_JM_mock``: the same with Mock plugins, to try the extension without hardware
+
+``main()`` copies them in the experiment folder of PyMoDAQ if they are not there yet.
+"""
+import shutil
+import sys
+from pathlib import Path
+
+from qtpy import QtWidgets
+
+from pymodaq_gui import utils as gutils
+from pymodaq_gui.plotting.data_viewers.viewer2D import Viewer2D
+from pymodaq_gui.utils.widgets import SpinBox
+from pymodaq_utils.config import GlobalConfig
+from pymodaq_utils.logger import set_logger, get_module_name
+from pymodaq_data.data import DataToExport
+
+from pymodaq.utils.config import get_set_experiment_path
+from pymodaq.utils.custom_ext import CustomExt
+from pymodaq.utils.managers.modules.utils import ModuleType
+
 from pymodaq_plugins_ftirjm.utils import Config as ConfigPlugin
 
-config = Config()
-config_plugin = ConfigPlugin()
+logger = set_logger(get_module_name(__file__))
 
-logger = utils.set_logger(utils.get_module_name(__file__))
+config = GlobalConfig()
+if 'ftirjm' not in config:
+    # PyMoDAQ registers the Config of the packages having instrument plugins only (get_instrument_plugins)
+    GlobalConfig.register()(ConfigPlugin)
+
+
+def config_plugin(*args):
+    return config('ftirjm', *args)
 
 EXTENSION_NAME = 'FTIR_JM'
 CLASS_NAME = 'FTIRJM'
 
+EXPERIMENT_NAME = 'FTIR_JM'
+EXPERIMENTS_PATH = Path(__file__).parent.parent.joinpath('resources')
 
-class FTIRJM(gutils.CustomApp):
-    # list of dicts enabling the settings tree on the user interface
+
+def install_experiments():
+    """Copy the experiments shipped with this plugin in PyMoDAQ's experiment folder, if not there yet"""
+    for experiment in EXPERIMENTS_PATH.glob(f'{EXPERIMENT_NAME}*.xml'):
+        target = get_set_experiment_path().joinpath(experiment.name)
+        if not target.exists():
+            shutil.copy(experiment, target)
+            logger.info(f'Experiment {experiment.stem} copied in {target.parent}')
+
+
+class FTIRJM(CustomExt):
+
     params = []
 
-    def __init__(self, dockarea, dashboard):
-        super().__init__(dockarea, dashboard)
-        self.viewer2D: Viewer2D = None
+    def __init__(self, parent: gutils.DockArea, dashboard):
+        super().__init__(parent, dashboard)  # also creates self.modules_manager for this extension
 
         self.setup_ui()
 
+    def setup_docks_and_widgets(self):
+        self.docks['viewer2D'] = gutils.Dock('Camera')
+        self.dockarea.addDock(self.docks['viewer2D'])
+        widget = QtWidgets.QWidget()
+        self.viewer2D = Viewer2D(widget)
+        self.docks['viewer2D'].addWidget(widget)
+
+    def setup_menus_and_toolbars(self, menubar: QtWidgets.QMenuBar = None):
+        # adds the toolbar showing/hiding the Dashboard, loading an experiment and a state
+        self.create_dashboard_toolbar(add_break=False)
+
     def setup_actions(self):
-        self.add_action('quit', 'Quit', 'close2', "Quit program", toolbar=self.toolbar)
-        self.add_action('grab', 'Grab', 'camera', "Grab from camera", checkable=True, toolbar=self.toolbar)
-        self.add_action('snap', 'Snap', 'snap', "Load target file (.h5, .png, .jpg) or data from camera",
-                        checkable=False, toolbar=self.toolbar)
-        self.add_action('show', 'Show/hide', 'read2', "Show Hide Dashboard", checkable=True, toolbar=self.toolbar)
+        self.add_action('grab', 'Grab', 'camera', "Grab from camera", checkable=True)
+        self.add_action('snap', 'Snap', 'snap', "Take a single image from the camera")
+
         self.add_widget('move1', SpinBox)
         self.get_action('move1').setStyleSheet("background-color : lightgreen; color: black")
         self.get_action('move1').setValue(config_plugin('position_1'))
-        self.add_action('move_abs_1', 'Move Abs', 'go_to_1', "Move to the set absolute value")
+        self.add_action('move_abs_1', 'Move Abs', 'go_to_1', "Move to the first position")
 
         self.add_widget('move2', SpinBox)
-        self.get_action('move2').setValue(config_plugin('position_2'))
         self.get_action('move2').setStyleSheet("background-color : lightcoral; color: black")
-        self.add_action('move_abs_2', 'Move Abs', 'go_to_2', "Move to the other set absolute value")
+        self.get_action('move2').setValue(config_plugin('position_2'))
+        self.add_action('move_abs_2', 'Move Abs', 'go_to_2', "Move to the second position")
 
     def connect_things(self):
-        self.connect_action('grab', self.modules_manager.get_mod_from_name('Camera').grab)
-        self.connect_action('snap', self.modules_manager.get_mod_from_name('Camera').snap)
-        self.modules_manager.get_mod_from_name('Camera').grab_done_signal.connect(self.show_data)
-        self.connect_action('show', lambda x: self.dashboard.mainwindow.setVisible(x))
+        self.connect_action('grab', self.grab)
+        self.connect_action('snap', self.snap)
+        self.connect_action('move_abs_1', lambda: self.move_at(self.get_action('move1').value()))
+        self.connect_action('move_abs_2', lambda: self.move_at(self.get_action('move2').value()))
 
-        self.connect_action('move_abs_1', lambda: self.move_at(self.get_action('move1')))
-        self.connect_action('move_abs_2', lambda: self.move_at(self.get_action('move2')))
+    def do_things_after_ui_setup(self):
+        if self.experiment_manager is not None and self.experiment_manager.entry_applied:
+            self.connect_camera()
 
-        self.connect_action('quit', self.quit)
+    def do_things_after_experiment_set(self, experiment_name: str, show_dashboard: bool = None):
+        """Called each time an experiment has been set in the Dashboard (also from the base class __init__)"""
+        super().do_things_after_experiment_set(experiment_name, show_dashboard)
+        if hasattr(self, 'viewer2D'):  # else called before setup_ui, done in do_things_after_ui_setup
+            self.connect_camera()
 
-    def move_at(self, sb: SpinBox):
-        self.modules_manager.get_mod_from_name('Elliptec', mod='act').move_abs(sb.value())
+    @property
+    def camera(self):
+        return self.modules_manager.get_mod_from_name(config_plugin('camera_name'), mod=ModuleType.Detector)
 
-    def quit(self):
-        self.dashboard.quit_fun()
-        self.parent.parent().close()
+    @property
+    def actuator(self):
+        return self.modules_manager.get_mod_from_name(config_plugin('actuator_name'), mod=ModuleType.Actuator)
 
-    def setup_docks(self):
-        """
-        to be subclassed to setup the docks layout
-        for instance:
+    def connect_camera(self):
+        """Display the images of the camera of the current experiment"""
+        previous_camera = getattr(self, '_camera', None)
+        if previous_camera is not None:
+            try:
+                previous_camera.grab_done_signal.disconnect(self.show_data)
+            except (TypeError, RuntimeError):
+                pass
+        self._camera = self.camera
+        if self._camera is None:
+            self.update_status(f"No detector named {config_plugin('camera_name')} in the experiment")
+        else:
+            self._camera.grab_done_signal.connect(self.show_data)
 
-        self.docks['ADock'] = gutils.Dock('ADock name)
-        self.dockarea.addDock(self.docks['ADock"])
-        self.docks['AnotherDock'] = gutils.Dock('AnotherDock name)
-        self.dockarea.addDock(self.docks['AnotherDock"], 'bottom', self.docks['ADock"])
+    def grab(self, do_grab: bool):
+        if self.camera is None:
+            return
+        if do_grab:
+            self.camera.grab()
+        else:
+            self.camera.stop_grab()
 
-        See Also
-        ########
-        pyqtgraph.dockarea.Dock
-        """
-        self.docks['viewer2D'] = gutils.Dock('Viewers')
-        self.dockarea.addDock(self.docks['viewer2D'])
+    def snap(self):
+        if self.camera is not None:
+            self.camera.snap()
 
-        widg1 = QtWidgets.QWidget()
-        self.viewer2D = Viewer2D(widg1)
-        self.docks['viewer2D'].addWidget(widg1)
-
-    def setup_menu(self):
-        '''
-        to be subclassed
-        create menu for actions contained into the self.actions_manager, for instance:
-
-        For instance:
-
-        file_menu = self.menubar.addMenu('File')
-        self.actions_manager.affect_to('load', file_menu)
-        self.actions_manager.affect_to('save', file_menu)
-
-        file_menu.addSeparator()
-        self.actions_manager.affect_to('quit', file_menu)
-        '''
-        pass
-
-    def value_changed(self, param):
-        ''' to be subclassed for actions to perform when one of the param's value in self.settings is changed
-
-        For instance:
-        if param.name() == 'do_something':
-            if param.value():
-                print('Do something')
-                self.settings.child('main_settings', 'something_done').setValue(False)
-
-        Parameters
-        ----------
-        param: (Parameter) the parameter whose value just changed
-        '''
-        if param.name() == 'do_something':
-            if param.value():
-                self.modules_manager.det_done_signal.connect(self.show_data)
-            else:
-                self.modules_manager.det_done_signal.disconnect()
-
-    def param_deleted(self, param):
-        ''' to be subclassed for actions to perform when one of the param in self.settings has been deleted
-
-        Parameters
-        ----------
-        param: (Parameter) the parameter that has been deleted
-        '''
-        raise NotImplementedError
-
-    def child_added(self, param):
-        ''' to be subclassed for actions to perform when a param  has been added in self.settings
-
-        Parameters
-        ----------
-        param: (Parameter) the parameter that has been deleted
-        '''
-        raise NotImplementedError
-
+    def move_at(self, value: float):
+        if self.actuator is None:
+            self.update_status(f"No actuator named {config_plugin('actuator_name')} in the experiment")
+        else:
+            self.actuator.move_abs(value)
 
     def show_data(self, dte: DataToExport):
+        dwa = dte.get_data_from_dim('Data2D')
+        if len(dwa) > 0:
+            self.viewer2D.show_data(dwa[0])
 
-        dwa = dte.get_data_from_dim('Data2D')[0]
-
-        self.viewer2D.show_data(dwa)
+    def _quit_fun(self) -> bool:
+        if self.camera is not None and self.is_action_checked('grab'):
+            self.camera.stop_grab()
+        return True
 
 
 def main():
-    import sys
-    from pymodaq.dashboard import DashBoard
-    from pathlib import Path
-    app = QtWidgets.QApplication(sys.argv)
-    if config['style']['darkstyle']:
-        import qdarkstyle
-        app.setStyleSheet(qdarkstyle.load_stylesheet())
+    """Run the extension on its own: loads a Dashboard (hidden) with the FTIR_JM experiment, then the extension
 
-    from pymodaq.dashboard import DashBoard, extensions
+    The Dashboard command line options apply, for instance ``-x FTIR_JM_mock`` to load the mock experiment.
+    """
+    from pymodaq_gui.qt_utils import mkQApp
+    from pymodaq.dashboard import load_dashboard_with_arguments
+    from pymodaq.utils.gui_utils.loader_utils import create_extension
 
-    ext = utils.find_dict_in_list_from_key_val(extensions, 'name', EXTENSION_NAME)
-    win = QtWidgets.QMainWindow()
-    area = gutils.dock.DockArea()
-    win.setCentralWidget(area)
-    win.resize(1000, 500)
-    win.setWindowTitle('PyMoDAQ Dashboard')
+    install_experiments()
+    if not any(arg in sys.argv for arg in ('-x', '--experiment')):
+        sys.argv.extend(['-x', EXPERIMENT_NAME])
 
-    dashboard = DashBoard(area)
+    app = mkQApp('FTIR JM')
 
+    win, dashboard, _ = load_dashboard_with_arguments(show_dashboard=False,
+                                                      load_extension=False,
+                                                      )
+    win.mainwindow.setVisible(False)
 
-    file = Path("../resources/FTIR_JM.xml")
-    if file.exists():
-        dashboard.set_preset_mode(file)
-        prog = dashboard.load_extensions_module(ext)
-    else:
-        msgBox = QtWidgets.QMessageBox()
-        msgBox.setText(f"The default file specified in the configuration file does not exists!\n"
-                       f"{file}\n"
-                       f"Impossible to load the DAQ_Scan Module")
-        msgBox.setStandardButtons(msgBox.Ok)
-        ret = msgBox.exec()
-
-    win.hide()
-    sys.exit(app.exec_())
+    win_ext, ext = create_extension(dashboard, FTIRJM, show_extension=True)
+    sys.exit(app.exec())
 
 
 if __name__ == '__main__':
     main()
-
-
