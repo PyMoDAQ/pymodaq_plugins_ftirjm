@@ -1,5 +1,7 @@
 title = 'this is the configuration file of the FTRIJM plugin'
 
-position_1 = 5
-position_2 = 25
+position_1 = 5  # first target of the Elliptec rotator (degree)
+position_2 = 25  # second target of the Elliptec rotator (degree)
 
+actuator_name = 'Elliptec'  # name of the actuator in the experiment
+camera_name = 'Camera'  # name of the 2D detector in the experiment

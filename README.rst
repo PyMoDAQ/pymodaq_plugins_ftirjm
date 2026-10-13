@@ -1,8 +1,6 @@
 pymodaq_plugins_ftirjm
 ######################
 
-.. the following must be adapted to your developed package, links to pypi, github  description...
-
 .. image:: https://img.shields.io/pypi/v/pymodaq_plugins_ftirjm.svg
    :target: https://pypi.org/project/pymodaq_plugins_ftirjm/
    :alt: Latest Version
@@ -11,15 +9,11 @@ pymodaq_plugins_ftirjm
    :target: https://pymodaq.readthedocs.io/en/stable/?badge=latest
    :alt: Documentation Status
 
-.. image:: https://github.com/PyMoDAQ/pymodaq_plugins_ftirjm/workflows/Upload%20Python%20Package/badge.svg
-   :target: https://github.com/PyMoDAQ/pymodaq_plugins_ftirjm
-   :alt: Publication Status
+.. image:: https://github.com/PyMoDAQ/pymodaq_plugins_ftirjm/actions/workflows/tests.yml/badge.svg
+    :target: https://github.com/PyMoDAQ/pymodaq_plugins_ftirjm/actions/workflows/tests.yml
 
-.. image:: https://github.com/PyMoDAQ/pymodaq_plugins_ftirjm/actions/workflows/Test.yml/badge.svg
-    :target: https://github.com/PyMoDAQ/pymodaq_plugins_ftirjm/actions/workflows/Test.yml
-
-
-Use this template to create a repository on your account and start the development of your own PyMoDAQ plugin!
+Specific PyMoDAQ extension for JM Poumirol's FTIR at CEMES lab, meant to be driven from a Raspberry Pi touch screen.
+Targets **PyMoDAQ 5.3.x** (Python 3.10 to 3.13).
 
 
 Authors
@@ -27,55 +21,26 @@ Authors
 
 * Sebastien Weber  (sebastien.weber@cnrs.fr)
 
-.. if needed use this field
-
-    Contributors
-    ============
-
-    * First Contributor
-    * Other Contributors
-
-.. if needed use this field
-
-  Depending on the plugin type, delete/complete the fields below
-
-
-    Instruments
-    ===========
-
-    Below is the list of instruments included in this plugin
-
-    Actuators
-    +++++++++
-
-    * **yyy**: control of yyy actuators
-    * **xxx**: control of xxx actuators
-
-    Viewer0D
-    ++++++++
-
-    * **yyy**: control of yyy 0D detector
-    * **xxx**: control of xxx 0D detector
-
-    Viewer1D
-    ++++++++
-
-    * **yyy**: control of yyy 1D detector
-    * **xxx**: control of xxx 1D detector
-
-
-    Viewer2D
-    ++++++++
-
-    * **yyy**: control of yyy 2D detector
-    * **xxx**: control of xxx 2D detector
-
-
-    PID Models
-    ==========
-
 
 Extensions
 ==========
 
-* **FTIR**:  Extension to load a custom IHM simpler to be driven from a raspberry touch screen
+* **FTIR_JM**: shows the images of a camera and moves an Elliptec rotator between two configurable positions.
+
+The instruments come from the Dashboard's experiment: an actuator named ``Elliptec`` and a 2D detector named
+``Camera`` (names and positions are in the ``config_ftirjm.toml`` configuration file). The instrument plugins come
+from other packages, installed as dependencies:
+
+* the Elliptec actuator of `pymodaq_plugins_thorlabs <https://github.com/PyMoDAQ/pymodaq_plugins_thorlabs>`_
+* the PiCamera detector of `pymodaq_plugins_raspberry <https://github.com/PyMoDAQ/pymodaq_plugins_raspberry>`_
+  (installed on a Raspberry Pi only: ``aarch64`` or ``armv7l``)
+
+Two experiments are shipped in ``resources`` and copied in PyMoDAQ's experiment folder when the extension is run
+on its own:
+
+* ``FTIR_JM``: Elliptec and PiCamera
+* ``FTIR_JM_mock``: the same with the Mock plugins, to try the extension without hardware
+
+Run it with ``python -m pymodaq_plugins_ftirjm.extensions.ftirjm`` (loads ``FTIR_JM``), or
+``python -m pymodaq_plugins_ftirjm.extensions.ftirjm -x FTIR_JM_mock``. It is also listed in the Dashboard's
+extension menu.
