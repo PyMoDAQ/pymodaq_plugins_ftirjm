@@ -45,17 +45,29 @@ python install-packages.py -d -qt pyside6     # choose the Qt backend (pyqt5, py
 
 Do not consider a task finished until `check_plugin` and `pytest` pass. Do not invent PyMoDAQ APIs: if a method
 or attribute is not in the base classes (`DAQ_Move_base`, `DAQ_Viewer_base`, `CustomExt`) or in an existing
-plugin, look it up in the installed `pymodaq` package instead of guessing.
+plugin, look it up in the installed `pymodaq` package instead of guessing. The same holds for what you write: a comment,
+a docstring or a documentation sentence that says how PyMoDAQ behaves must come from reading the code that
+implements it, not from memory or from a guess. If you could not verify something, say so.
 
 ## 3. Instrument plugins
 
 File and class names must match: `daq_move_<Name>.py` holds `DAQ_Move_<Name>`; `daq_<N>Dviewer_<Name>.py` holds
 `DAQ_<N>DViewer_<Name>` (N = 0, 1, 2 or N). Each file ends with `if __name__ == '__main__': main(__file__)`.
 
-**Actuator** (`DAQ_Move_base`). Override at least, in the order of the template (the order in which to develop them),
-`ini_attributes`, `ini_stage`, `close`, `get_actuator_value`, `move_abs`, `move_rel`, `move_home`, `stop_motion`,
-`commit_settings`.
+**Actuator** (`DAQ_Move_base`). Required (`check_plugin` reports an error otherwise): `ini_stage`, `get_actuator_value`,
+`move_abs`, `move_rel` and `close`. Override too, when the instrument can do it: `ini_attributes`, `move_home`,
+`stop_motion` (`check_plugin` warns if it is missing), `commit_settings`. The template lists them in the order in which
+to develop them. The list is defined once in `pymodaq_utils.plugin_tools.contract`, with when each method is called and
+what it returns (table in the developer guide, "The methods of a plugin").
 
+- (Actuators and detectors.) A plugin that works on some systems only (a Windows driver, a Raspberry Pi board)
+  declares it in the instrument class, for instance `supported_platforms = ('win32',)` (values of `sys.platform`:
+  `win32`, `linux`, `darwin`) and optionally `supported_architectures = ('aarch64', 'armv7l')` (values of
+  `platform.machine()`). PyMoDAQ then refuses to initialize it elsewhere with a message. The `Operating System` and
+  `Programming Language :: Python :: 3.x` classifiers are computed when the package is built (`classifiers` is
+  dynamic in the `pyproject.toml`, the others are in `[tool.pymodaq] classifiers`). A plugin working on several
+  systems must stay importable on all of them: import Windows-only code lazily (PMQ317; not reported when every
+  instrument is `('win32',)`). Needs `pymodaq>=5.3.6`.
 - `ini_stage(controller=None)` returns `(info: str, initialized: bool)`. If `self.is_master`, create the controller;
   otherwise store the `controller` passed in (several axes share one controller).
 - Class attributes: `is_multiaxes`, `_axis_names`, `_controller_units`, `_epsilons`,
@@ -67,8 +79,8 @@ File and class names must match: `daq_move_<Name>.py` holds `DAQ_Move_<Name>`; `
 - Positions are `DataActuator` objects with **units** (`units=self.axis_unit`); use `check_bound`,
   `set_position_with_scaling` and `get_position_with_scaling` as in the template.
 
-**Detector** (`DAQ_Viewer_base`). Override at least, in the order of the template, `ini_attributes`, `ini_detector`,
-`close`, `grab_data`, `stop`, `commit_settings`.
+**Detector** (`DAQ_Viewer_base`). Required: `ini_detector`, `grab_data`, `stop` and `close`. Override too, when needed:
+`ini_attributes`, `commit_settings`. Same contract module as for the actuators.
 
 - `ini_detector(controller=None)` returns `(info, initialized)`, same master/slave logic.
 - `params = comon_parameters + [...]`.
@@ -119,6 +131,14 @@ and the deprecated `CustomApp` / `CustomExt` hooks `setup_docks` and `setup_menu
 `setup_menus_and_toolbars`).
 
 ## 4. Dashboard extensions (`CustomExt`)
+
+Structure: `CustomApp(QObject, ActionManager, ParameterManager)` gives actions with their toolbar/menu placement,
+the settings tree (`params`, `settings`, `value_changed`), the dock area, the status bar, `h5_manager` and
+`thread_manager`; `CustomExt(CustomApp)` adds `dashboard`, `modules_manager` and the Dashboard toolbar. A worker
+(`ExtensionWorker`) runs in its own thread with a `SaverWorker`; talk to workers with signals only. Two patterns: a standalone app
+(`CustomApp`, no instrument) or a Dashboard extension (`CustomExt`, any use of instruments); embedding control modules in
+a `CustomApp` is possible but not advised. They are drawn, with text versions, in the PyMoDAQ
+documentation page "CustomApp and CustomExt" (`docs/src/developer_folder/custom_app.rst`).
 
 - Entry point group `pymodaq.extensions` in `pyproject.toml`; each module in `extensions/` defines
   `EXTENSION_NAME` (menu label), `CLASS_NAME` (class name) and a class derived from `CustomExt`.
